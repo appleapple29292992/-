@@ -216,16 +216,7 @@ async def nitro_info(interaction: discord.Interaction):
         "• 이 봇은 코드를 생성하거나 자동으로 등록하지 않습니다.",
         ephemeral=True
     )
-
-
-def main():
-    token = os.getenv("DISCORD_BOT_TOKEN")
-    if not token:
-        raise RuntimeError(
-            "DISCORD_BOT_TOKEN 환경 변수가 없습니다. "
-            "봇 토큰을 환경 변수로 설정한 뒤 실행하세요."
-        )
-    bot.run(os.environ.get("TOKEN"))
+bot.run(os.environ.get("TOKEN"))
 
 
 if __name__ == "__main__":
