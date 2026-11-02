@@ -50,4 +50,4 @@ async def level_command(interaction: discord.Interaction):
         f"{interaction.user.mention} 님의 레벨: {data['level']}lv ({data['xp']})\n다음 레벨까지 {need - data['xp']} XP 필요"
     )
 
-bot.run(TOKEN)
+bot.run(os.environ.get("TOKEN"))
