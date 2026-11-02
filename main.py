@@ -1,10 +1,26 @@
+
 import os
 import discord
 from discord.ext import commands
 from discord import app_commands
+from flask import Flask
+from threading import Thread
 
-TOKEN = "BOT_TOKEN"
+# 1. 간단한 웹 서버 생성 (Render가 잠들지 않도록 유지용)
+app = Flask('')
 
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_web():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run_web)
+    t.start()
+
+# 2. 디스코드 봇 설정
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -28,7 +44,7 @@ def add_xp(user_id):
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print("ready")
+    print(f"로그인 완료: {bot.user}")
 
 @bot.event
 async def on_message(message):
@@ -51,4 +67,6 @@ async def level_command(interaction: discord.Interaction):
         f"{interaction.user.mention} 님의 레벨: {data['level']}lv ({data['xp']})\n다음 레벨까지 {need - data['xp']} XP 필요"
     )
 
+# 3. 웹 서버와 봇 동시 실행
+keep_alive()
 bot.run(os.environ.get("TOKEN"))
