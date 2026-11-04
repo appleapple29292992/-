@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 # ───────────────────────── 설정 ─────────────────────────
 BASE = os.path.dirname(os.path.abspath(__file__))
-ASSETS = os.path.join(BASE, "assets")
+ASSETS = BASE
 DATA_FILE = os.path.join(BASE, "data.json")
 
 XP_PER_MESSAGE = 5       # 메시지 1개당 경험치
