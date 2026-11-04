@@ -1,3 +1,5 @@
 discord.py>=2.3
 flask
 Pillow
+pymongo>=4.13
+dnspython
