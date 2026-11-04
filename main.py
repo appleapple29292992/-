@@ -368,7 +368,7 @@ async def bot_diag(interaction: discord.Interaction):
             await mongo.admin.command("ping")
             db_state = "✅ MongoDB 연결됨"
         except Exception as e:
-            db_state = f"❌ 연결 오류: {e!r}"
+            db_state = f"❌ 연결 오류: {str(e)[:200]}"
     await interaction.response.send_message(
         "🔍 **봇 진단**\n"
         f"• 저장소: {db_state}\n"
@@ -378,7 +378,7 @@ async def bot_diag(interaction: discord.Interaction):
         f"• 메시지 내용 인텐트(코드): {ok(bot.intents.message_content)}\n"
         f"• 봇 시작 후 받은 채팅 수: **{stats['seen']}**\n"
         f"• 경험치 지급 횟수: **{stats['xp']}**\n"
-        f"• 마지막 오류: {stats['last_err'] or '없음'}",
+        f"• 마지막 오류: {str(stats['last_err'] or '없음')[:500]}",
         ephemeral=True)
 
 
