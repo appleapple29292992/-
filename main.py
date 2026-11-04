@@ -67,6 +67,63 @@ def save_data():
 
 
 data = load_data()
+
+# ── MongoDB (환경변수 MONGO_URI 가 있으면 DB에 저장, 없으면 data.json 사용) ──
+MONGO_URI = os.environ.get("MONGO_URI")
+mongo = None
+db = None
+
+
+async def init_db():
+    """봇 시작 시 DB에 연결하고 저장된 데이터를 불러옴"""
+    global mongo, db
+    if not MONGO_URI:
+        print("⚠️ MONGO_URI 없음 → data.json 사용 (Render에서는 재시작 시 초기화될 수 있음)")
+        return
+    from pymongo import AsyncMongoClient
+    mongo = AsyncMongoClient(MONGO_URI, serverSelectionTimeoutMS=8000)
+    db = mongo["levelbot"]
+    await mongo.admin.command("ping")
+
+    # 처음 한 번: data.json 에 있던 기존 데이터를 DB로 옮김
+    if await db.users.count_documents({}) == 0 and data["users"]:
+        for uid, u in data["users"].items():
+            await db.users.update_one({"_id": uid}, {"$set": u}, upsert=True)
+
+    async for doc in db.users.find({}):
+        data["users"][doc["_id"]] = {"xp": doc.get("xp", 0), "level": doc.get("level", 1),
+                                     "ruby": doc.get("ruby", 0)}
+    async for doc in db.guilds.find({}):
+        gid = doc["_id"]
+        if "log_channel" in doc:
+            data["log_channels"][gid] = doc["log_channel"]
+        st = data["settings"].setdefault(gid, {})
+        for k in ("xp_per_message", "cooldown"):
+            if k in doc:
+                st[k] = doc[k]
+    print(f"✅ MongoDB 연결 완료 (유저 {len(data['users'])}명 불러옴)")
+
+
+async def persist_user(user_id: int):
+    if db is None:
+        save_data()
+        return
+    u = get_user(user_id)
+    await db.users.update_one(
+        {"_id": str(user_id)},
+        {"$set": {"xp": u["xp"], "level": u["level"], "ruby": u["ruby"]}}, upsert=True)
+
+
+async def persist_guild(guild_id: int):
+    if db is None:
+        save_data()
+        return
+    gid = str(guild_id)
+    doc = dict(data["settings"].get(gid, {}))
+    if gid in data["log_channels"]:
+        doc["log_channel"] = data["log_channels"][gid]
+    if doc:
+        await db.guilds.update_one({"_id": gid}, {"$set": doc}, upsert=True)
 last_xp_time = {}
 
 
@@ -247,8 +304,24 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
+stats = {"seen": 0, "xp": 0, "last_err": None}
+
+
 def is_admin(interaction: discord.Interaction) -> bool:
     return interaction.user.guild_permissions.manage_guild
+
+
+async def _setup_hook():
+    try:
+        await init_db()
+    except Exception as e:
+        global db
+        db = None
+        stats["last_err"] = f"DB 연결 실패: {e!r}"
+        print("❌ DB 연결 실패, data.json 으로 동작:", repr(e))
+
+
+bot.setup_hook = _setup_hook
 
 
 @bot.event
@@ -262,20 +335,51 @@ async def on_message(message: discord.Message):
     # 채팅만 쳐도 경험치가 오르는 부분
     if message.author.bot or not message.guild:
         return
+    stats["seen"] += 1
+    print(f"[메시지 수신] {message.author} / #{message.channel}")
 
-    gid = message.guild.id
-    now = time.time()
-    if now - last_xp_time.get(message.author.id, 0) >= xp_cooldown(gid):
-        last_xp_time[message.author.id] = now
-        old, new, reward = apply_xp(message.author.id, xp_per_message(gid))
-        save_data()
-        if new > old:
-            try:
+    try:
+        gid = message.guild.id
+        now = time.time()
+        if now - last_xp_time.get(message.author.id, 0) >= xp_cooldown(gid):
+            last_xp_time[message.author.id] = now
+            old, new, reward = apply_xp(message.author.id, xp_per_message(gid))
+            await persist_user(message.author.id)
+            stats["xp"] += 1
+            if new > old:
                 await send_levelup(message.author, message.channel, new, reward)
-            except Exception as e:
-                print("레벨업 이미지 전송 실패:", e)
+    except Exception as e:
+        stats["last_err"] = repr(e)
+        print("경험치 처리 오류:", repr(e))
 
     await bot.process_commands(message)
+
+
+@bot.tree.command(name="봇진단", description="채팅 경험치가 안 오를 때 원인을 확인합니다.")
+@app_commands.default_permissions(manage_guild=True)
+@app_commands.guild_only()
+async def bot_diag(interaction: discord.Interaction):
+    p = interaction.channel.permissions_for(interaction.guild.me)
+    ok = lambda v: "✅" if v else "❌"
+    if db is None:
+        db_state = "❌ 사용 안 함 (data.json - 재시작하면 초기화될 수 있어요)"
+    else:
+        try:
+            await mongo.admin.command("ping")
+            db_state = "✅ MongoDB 연결됨"
+        except Exception as e:
+            db_state = f"❌ 연결 오류: {e!r}"
+    await interaction.response.send_message(
+        "🔍 **봇 진단**\n"
+        f"• 저장소: {db_state}\n"
+        f"• 이 채널 보기 권한: {ok(p.view_channel)}\n"
+        f"• 이전 메시지 읽기 권한: {ok(p.read_message_history)}\n"
+        f"• 메시지 보내기 / 파일 첨부: {ok(p.send_messages)} / {ok(p.attach_files)}\n"
+        f"• 메시지 내용 인텐트(코드): {ok(bot.intents.message_content)}\n"
+        f"• 봇 시작 후 받은 채팅 수: **{stats['seen']}**\n"
+        f"• 경험치 지급 횟수: **{stats['xp']}**\n"
+        f"• 마지막 오류: {stats['last_err'] or '없음'}",
+        ephemeral=True)
 
 
 @bot.tree.command(name="로그등록", description="레벨업 알림 이미지를 보낼 채널을 지정합니다.")
@@ -292,7 +396,7 @@ async def log_register(interaction: discord.Interaction, 채널: discord.TextCha
             f"{채널.mention} 에 메시지 보내기 / 파일 첨부 권한이 필요해요.", ephemeral=True)
         return
     data["log_channels"][str(interaction.guild.id)] = 채널.id
-    save_data()
+    await persist_guild(interaction.guild.id)
     await interaction.response.send_message(f"✅ 레벨업 로그 채널을 {채널.mention} 으로 등록했어요!")
 
 
@@ -312,7 +416,7 @@ async def bot_settings(interaction: discord.Interaction,
         s["xp_per_message"] = 한채팅당_오를_경험치량
     if 쿨타임_초 is not None:
         s["cooldown"] = 쿨타임_초
-    save_data()
+    await persist_guild(interaction.guild.id)
     title = "⚙️ 현재 설정" if 한채팅당_오를_경험치량 is None and 쿨타임_초 is None else "✅ 설정을 저장했어요"
     await interaction.response.send_message(
         f"{title}\n"
@@ -328,7 +432,7 @@ async def _change_xp(interaction, member: discord.Member, amount: int):
         await interaction.response.send_message("봇에게는 쓸 수 없어요.", ephemeral=True)
         return
     old, new, reward = apply_xp(member.id, amount)
-    save_data()
+    await persist_user(member.id)
     u = get_user(member.id)
     sign = "추가" if amount > 0 else "제거"
     await interaction.response.send_message(
