@@ -1,5 +1,6 @@
-discord.py>=2.3
-flask
-Pillow
-pymongo>=4.13
-dnspython
+discord.py>=2.4.0
+flask>=3.0.0
+python-dotenv>=1.0.0
+pillow>=10.0.0
+pymongo>=4.10.0
+bcsfe
