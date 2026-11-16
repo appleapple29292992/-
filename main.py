@@ -15,10 +15,10 @@ from flask import Flask
 
 # (표시 이름, 파이썬 파일명(확장자 제외), 토큰 환경변수 이름)
 BOTS = [
-    ("부재중 봇", "afk_bot", "TOKEN1"),
-    ("저스터웨이 (말하기/DM/예약)", "justway_bot", "TOKEN2"),
-    ("냥코 티켓 봇", "nyanko_bot", "TOKEN3"),
-    ("레벨 봇", "level_bot", "TOKEN4"),
+    ("부재중 봇", "afk_bot", "TOKEN"),
+    ("저스터웨이 (말하기/DM/예약)", "justway_bot", "TOKEN"),
+    ("냥코 티켓 봇", "nyanko_bot", "TOKEN"),
+    ("레벨 봇", "level_bot", "TOKEN"),
     ("티켓 봇", "ticket_bot", "TICKET_TOKEN"),
 ]
 
